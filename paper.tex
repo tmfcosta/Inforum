@@ -269,41 +269,6 @@ Estão representadas na figura \ref{fig:figure3.2} três réplicas que têm um e
 
 O problema é assumindo que (r,s1,o) não permite a leitura ao utilizador s1, isso significa que na réplica R1 foi visível quando foi feita a operação (OpWrite, s2) que não existia essa permissão. Ou seja, criando uma analogia com o nosso exemplo anterior a Alice iria estar a remover o Bob e de seguida a adicionar uma foto, pois ela viu na sua réplica que o Bob estava realmente removido. Mas se na réplica R3 for feito concorrentemente uma modificação de políticas (r',s1,o) em que r' permite a s1 que faça operações de leitura podemos ter o caso de na réplica 2 quando ambas as mudanças convergem, elas ficarem sobre uma ordem que vá permitir a fuga de informação. Neste caso iria ser feita uma alteração na réplica 3 a dizer que Bob poderia ver as fotos e desta forma seria possível ao Bob ver as fotos na réplica 2 se as operações de remoção de permissão de leitura chegassem antes das de adição de permissão de leitura (r,s1,o) → (r',s1,o), não respeitando a privacidade requisitada na réplica 1.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\subsection{Semanticas} \label{semantics}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-Neste caso o controlo de consistência entre réplicas é apenas eventual, sendo que não existem garantias de quando as atualizações vão ser realizadas em todas as réplicas nem com que ordem, sendo possível estados temporariamente inconsistentes.
-No caso do controlo de acessos, como já falamos, isto pode levantar problemas. 
-Sendo que estamos a olhar para sistemas geo-replicados, sabemos que cada réplica é apenas uma cópia da outra e não vai ter restrições próprias de controlo de acesso, ou seja, todas as réplicas vão conseguir propagar e ler todas as alterações que foram feitas. Com isto podemos adotar um sistema de confiança mútua entre todas estas réplicas em que podemos assumir uma caixa negra, assumindo que todas estas réplicas funcionam como um apenas servidor.
-Para vermos como funciona temos 4 operações que vamos descrever. Estas operações são mudanças nas políticas de controlo de acessos, são elas: Permitir Leituras; Permitir Escritas; Revogar Leitura; Revogar Escrita.
-
-
-\paragraph{\textbf{\textit{•Permitir Leituras}}}
-
-No caso de dar permissões de leitura a um utilizador que ainda não as tinhas, dado que sabemos que eventualmente todos os servidores vão saber que o utilizador tem aquelas permissões e vão dar acesso aos seus dados. O único problema que poderia haver seria um utilizador dar permissões e depois fazer uma modificação, esperando que o outro o pudesse ver, mas como sabemos eventualmente vai ser possível, mesmo que a atualização de dados se processe antes do controlo de acessos, desta forma nunca criando inconsistência.
-
-\paragraph{\textbf{\textit{•Permitir Escritas: }}}
-Neste caso pode existir a tentativa de dar as permissões a um utilizador. Sabendo que a propagação vai ser eventual sabemos que eventualmente todas as réplicas vão saber as permissões desse mesmo utilizador. Nunca vai ser problemático se optarmos por usar o modelo de aceitar e rejeitar atualizações segundo o modelo de confiança mútua entre os servidores. Ou seja, desta forma, se um cliente ficar com permissões de escrita e o seu servidor souber que as tem, ele vai marcar na mensagem da modificação que permitiu a atualização.
-\\
-\\
-\textbf{Escritas quando aceites por uma replica devem ser assinadas pela mesma, e apenas depois enviadas para as outras replicas, desta forma garantindo que vão ser aceites em todas as replicas.}
-
-
-\paragraph{\textbf{\textit{•Revogar Leitura}}}
-
-No caso em que deixamos de permitir leituras vamos ter o problema da mobilidade do utilizador e também da ordenação de operações. Isto porque o mesmo pode tentar mudar de réplica para ler da réplica que ainda lhe permite ver as novas atualizações. Desta forma sabemos que se este utilizador se mantiver sempre ligado à mesma réplica apenas teremos o problema de se por exemplo uma nova modificação vier para a nossa réplica antes da remoção de permissões de leitura, mesmo que na origem tenham sido feitas primeiro as operações de tirar permissão de leitura e depois fazer a atualização. Com isto temos mais 2 pontos chave:
-\\
-\\
-\textbf{O utilizador tem de ter uma baixa capacidade de mudar de réplica por sua própria vontade, sem ser quando uma réplica fica indisponível.}
-\\
-\textbf{As operações de atualização de dados e de revogação de permissões têm de ter uma ordenação causal para desta forma não permitir ver atualizações já depois de permissões terem sido removidas.
-}
-
-\paragraph{\textbf{\textit{•Revogar Escrita}}}
-
-Quando se nega uma escrita continuamos a ter o problema descrito anteriormente, em que o cliente pode mudar de réplicas para onde ainda tem permissões.
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Detalhes de Implementação}\label{sec:implementacao}
@@ -318,7 +283,7 @@ Se existem operações concorrentes adicionamos as permissões a uma lista, pode
 
 Em relação aos problemas encontrados anteriormente, em primeiro lugar a necessidade de não haver perda de informação das políticas quando são realizadas operações de escrita sobre as mesmas de forma concorrente. Quando existem modificações concorrentes a representação de cada uma delas vai dar-nos o conhecimento sobre o que cada réplica permite, sendo que o objetivo é existir uma defesa contra a possibilidade de serem feitas posteriormente edições ou leituras sobre os dados que deveriam estar protegidos. No caso da Alice e do Bob dado como exemplo anteriormente seria necessário registar na réplica intermédia que estavam a existir operações concorrentes e que as mesmas tinhas de ser juntas de forma a ser possível interpretar o que se passa em cada uma das réplicas. Tendo as várias políticas das várias réplicas é assim possível optar por um caminho mais seguro, em que para serem calculadas as permissões, vamos verificar o mínimo entre as operações de modificação de políticas concorrentes que existiram. Na nossa implementação iríamos desta forma usar as múltiplas permissões guardadas quando eram detetadas modificações concorrentes e quando era pedido para saber o valor de permissão do utilizador era calculado um mínimo.
 
-Outro dos problemas era a falta de um ordenação das operações, sendo possível operações de escrita realizadas numa réplica a seguir a uma edição de políticas, ser vista de forma inversa noutras réplicas criando desta forma a possibilidade de termos fuga de informação sensível. Podia ter sido usada como solução o uso de causalidade entre operações segundo os relógios de Lamport [BIBLIOGRAFIA]. Contudo isto não foi o aplicado, sendo que desta forma era resolvido o desafio de desordenação de operações, mas teria de existir uma ligação entre cada CRDT de políticas e cada CRDT de dados. A solução adotada foi juntar ambos, ou seja, as políticas de controlo de acesso estarem dentro do objeto referido. Esta solução acaba por aumentar a complexidade devido a ser necessário implementar as políticas de controlo de acesso para cada CRDT. Desta forma, quando é realizada uma operação de escrita as políticas que estavam em uso durante essa mesma operação vão acompanhar a mensagem. Quando chegam a outra réplica estas políticas são adicionadas às políticas atuais e é calculado um mínimo, sendo que desta forma se numa réplica R1 não for permitido o Bob ver uma alteração e de seguida nessa mesma réplica for feita uma mudança de um objeto, é possível saber com certezas que o Bob não vai conseguir ver essa alteração em nenhuma das réplicas devido ao cálculo dos mínimos.
+Outro dos problemas era a falta de um ordenação das operações, sendo possível operações de escrita realizadas numa réplica a seguir a uma edição de políticas, ser vista de forma inversa noutras réplicas criando desta forma a possibilidade de termos fuga de informação sensível. Podia ter sido usada como solução o uso de causalidade entre operações segundo os relógios de Lamport \cite{lamport1978time}. Contudo isto não foi o aplicado, sendo que desta forma era resolvido o desafio de desordenação de operações, mas teria de existir uma ligação entre cada CRDT de políticas e cada CRDT de dados. A solução adotada foi juntar ambos, ou seja, as políticas de controlo de acesso estarem dentro do objeto referido. Esta solução acaba por aumentar a complexidade devido a ser necessário implementar as políticas de controlo de acesso para cada CRDT. Desta forma, quando é realizada uma operação de escrita as políticas que estavam em uso durante essa mesma operação vão acompanhar a mensagem. Quando chegam a outra réplica estas políticas são adicionadas às políticas atuais e é calculado um mínimo, sendo que desta forma se numa réplica R1 não for permitido o Bob ver uma alteração e de seguida nessa mesma réplica for feita uma mudança de um objeto, é possível saber com certezas que o Bob não vai conseguir ver essa alteração em nenhuma das réplicas devido ao cálculo dos mínimos.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Avaliação}\label{sec:av}
@@ -328,11 +293,19 @@ Outro dos problemas era a falta de um ordenação das operações, sendo possív
 \section{Trabalho Relacionado}\label{sec:related work}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+Na área de controlo de acessos em sistema com consistência eventual, existem dois tipos de trabalho relacionado: data stores e ferramentas de edição colaborativa.
+\textit{Data stores com consitência eventual:} Apesar de muitos protocolos e pesquisa terem sido feitos sobre Data stores com consistência eventual, pouco ênfase tem sido dado ao controlo de acessos neste tipo de sistemas. A versão original do Amazon Dynamo \cite{decandia2007dynamo} não oferecia nenhum tipo de autenticação ou autorização. Outros data stores com consistência eventual já oferecem algumas técnicas de acesso de controlo mas com pouca granularidade, insuficiente para providenciar controlo ao nível aplicacional. Couchbase \cite{couch}, MongoDB \cite{mongo} e Riak KV \cite{riak} todos suportam utilizadores, funções e permissões, mas tem o problema da granularidade que é ao nível de \textit{buckets} e coleções. Uma edição mais granular ao nível aplicacional não é desta forma suportada.
+
+Wobber et al. \cite{wobber2010policy} apresenta um controlo de acessos para consistência fraca em sistemas onde não existe confiança mútua. O escopo é diferente pois consiste numa replicação apenas parcial com diferentes acessos por cada réplica. Este modelo também apresenta problemas similares em relação à causalidade entre as políticas e operações subsequentes que sejam permitidas. No seu modelo existe uma espera pela política desejada, sendo que mesmo assim a causalidade entre mudanças de políticas que restringem a visibilidade de efeitos de operações e as subsequentes  execuções de operação não são capturadas. Desta forma é diferente na resolução do nosso artigo, pois continua a permitir fugas de informação e necessita de uma espera de políticas.
+
+Ferramentas de Edição Colaborativa: Imine et al. \cite{imine2009flexible} apresenta um modelo de acesso de controlo para edição colaborativa distribuída. As modificações dos documentos no editor são vistas como operações sobre dados sendo que o documento precisa de consistência eventual em todos os editores distribuídos. Para prevenir divergências, todas as operações num objeto são ordenadas pelo autor do editor. Isto implica uma relação de um para um entre parte do texto e o editor responsável, o que leva a um ponto possível de falha. Também este modelo apenas considera operações de modificação, sendo todos os utilizadores permitidos a ler o documento completo. No nosso caso temos uma restrição das leituras o que nos permite falar sobre fugas de informação.
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Trabalho Futuro}\label{sec:future work}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Este artigo de investigação consiste no primeiro passo para providenciar controlo de acessos ao sistema em que estamos a trabalhar, Legion \cite{mastersthesis}. O mesmo procura enriquecer a forma como são vistas as aplicações web, oferecendo também direta interação direta entre clientes para aumentar a disponibilidade e latência de pedidos, isto tudo criando uma rede de \textit{peer-to-peer} entre clientes.
+Este artigo de investigação consiste no primeiro passo para providenciar controlo de acessos ao sistema em que estamos a trabalhar, Legion \cite{mastersthesis}. O mesmo procura enriquecer a forma como são vistas as aplicações web, oferecendo também interação direta entre clientes para aumentar a disponibilidade e diminuir latência de pedidos, isto tudo criando uma rede de \textit{peer-to-peer} entre clientes.
 
 Neste caso este artigo vai de encontro em primeiro que tudo estabelecermos este acesso de controlo na componente centralizada quem tem de ser usada para ser mantido o estado do sistema e dar uma base confiável. 
 
